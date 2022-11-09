@@ -1,26 +1,54 @@
 ---
 title: "Spotify Analysis"
-format: html
+format:
+  html:
+    code-fold: true
 editor: visual
 ---
 
-## Quarto
+## Analysis of my Spotify history
 
-Quarto enables you to weave together content and executable code into a finished document. To learn more about Quarto see <https://quarto.org>.
+Data were downloaded from my spotify account using the function in the spotify account. An manual to do so can be found on [Spotify support page](https://support.spotify.com/us/article/data-rights-and-privacy-settings/). After download, the data are provided as json files and were converted to a data frame using the ConvertData.R script.
 
-## Running Code
+## Import the required packages
 
-When you click the **Render** button a document will be generated that includes both content and the output of embedded code. You can embed code like this:
-
-```{r}
-1 + 1
-```
-
-You can add options to executable code like this
+First, the needed packages are loaded. The packages used are included in the tidyverse and the spotifyR package for in detail analyse of songs or artists. Since the code was started with #\| echo: false (the `echo: false` -option), the code will not be shown in the final document.
 
 ```{r}
 #| echo: false
-2 * 2
+library("ggplot2")
+library(tidyr)
+library(dplyr)
 ```
 
-The `echo: false` option disables the printing of code (only output is displayed).
+Next, we load the dataset in the `data`-object.
+
+```{r}
+data <- read.csv("MyData/TotalHistory.csv", row.names = "X")
+data$ConvTime <- as.Date(data$ConvTime)
+head(data)
+```
+
+## Exploratory Analysis
+First, we look at some general properties of the dataset. There are a total of `r nrow(data)` observations, with `r length(unique(data$artistName))` unique artist for `r length(unique(data$ConvTime))` days. Furthermore, the mean leasting time was `r round(mean(data$msPlayed)/1000, 2)` seconds.
+
+
+```{r}
+summary(data)
+```
+
+
+### Artist over time
+Next, we look at how long certain artists were played by day.
+```{r}
+data %>% 
+  group_by(artistName, ConvTime) %>% 
+  count() %>% 
+  summarise(Total = cumsum(n)) %>% 
+  ggplot(aes(x=ConvTime, y=Total, color=artistName))+
+  geom_line()+
+  scale_x_date()+
+  guides(color="none")
+
+```
+
