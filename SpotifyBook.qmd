@@ -30,8 +30,11 @@ head(data)
 ```
 
 ## Exploratory Analysis
-First, we look at some general properties of the dataset. There are a total of `r nrow(data)` observations, with `r length(unique(data$artistName))` unique artist and `r length(unique(data$trackName))` unique listened songs on `r length(unique(data$ConvTime))` days. Furthermore, the mean leasting time was `r round(mean(data$msPlayed)/1000, 2)` seconds. </br>
-This leads to an average of `r round( nrow(data)/ length(unique(data$ConvTime)),1)` songs per day as well as `r round( length(unique(data$trackName))/ length(unique(data$artistName)),1)` songs per artist. Since this analysis does not capture individual artists or days, this analysis will go into more detail to capture this variance.
+First, we look at some general properties of the dataset. There are a total of `r nrow(data)` observations, with `r length(unique(data$artistName))` unique artist and `r length(unique(data$trackName))` unique listened songs on `r length(unique(data$ConvTime))` days. Furthermore, the mean listening time was `r round(mean(data$msPlayed)/1000, 2)` seconds. </br>
+This leads to an average of `r round( nrow(data)/ length(unique(data$ConvTime)),1)` songs per day as well as 
+`r round( sum(data$msPlayed)/1000/60 / length(unique(data$ConvTime)),1)`
+minutes listened to music. In general, there were
+`r round( length(unique(data$trackName))/ length(unique(data$artistName)),1)` songs per artist. Since this analysis does not capture individual artists or days, this analysis will go into more detail to capture this variance.
 
 
 ```{r}
