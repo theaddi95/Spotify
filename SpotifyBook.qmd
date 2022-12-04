@@ -8,51 +8,204 @@ editor: visual
 
 ## Analysis of my Spotify history
 
-Data were downloaded from my spotify account using the function in the spotify account. An manual to do so can be found on [Spotify support page](https://support.spotify.com/us/article/data-rights-and-privacy-settings/). After download, the data are provided as json files and were converted to a data frame using the ConvertData.R script.
+Spotify history was downloaded from my spotify account using the function in the spotify account. A manual to do so can be found on [Spotify support page](https://support.spotify.com/us/article/data-rights-and-privacy-settings/). After download, the data are provided as json files and were converted to a data frame using the ConvertData.R script.
 
 ## Import the required packages
 
 First, the needed packages are loaded. The packages used are included in the tidyverse and the spotifyR package for in detail analyse of songs or artists. Since the code was started with #\| echo: false (the `echo: false` -option), the code will not be shown in the final document.
 
-```{r}
+```{r loadpackages}
 #| echo: false
+#| include: false
 library("ggplot2")
 library(tidyr)
 library(dplyr)
+library("ggdark")
+library(lubridate)
 ```
 
 Next, we load the dataset in the `data`-object.
 
-```{r}
+```{r loadD}
 data <- read.csv("MyData/TotalHistory.csv", row.names = "X")
-data$ConvTime <- as.Date(data$ConvTime)
+data$ConvTime <- ymd_hm(data$endTime)
+data$Day <- floor_date(data$ConvTime, unit = "day")
 head(data)
 ```
 
 ## Exploratory Analysis
-First, we look at some general properties of the dataset. There are a total of `r nrow(data)` observations, with `r length(unique(data$artistName))` unique artist and `r length(unique(data$trackName))` unique listened songs on `r length(unique(data$ConvTime))` days. Furthermore, the mean listening time was `r round(mean(data$msPlayed)/1000, 2)` seconds. </br>
-This leads to an average of `r round( nrow(data)/ length(unique(data$ConvTime)),1)` songs per day as well as 
-`r round( sum(data$msPlayed)/1000/60 / length(unique(data$ConvTime)),1)`
-minutes listened to music. In general, there were
-`r round( length(unique(data$trackName))/ length(unique(data$artistName)),1)` songs per artist. Since this analysis does not capture individual artists or days, this analysis will go into more detail to capture this variance.
 
+First, we look at some general properties of the dataset. There are a total of **`r nrow(data)` observations**, with **`r length(unique(data$artistName))` unique artist** and **`r length(unique(data$trackName))` unique listened songs** on **`r length(unique(data$ConvTime))` days**. Furthermore, the mean listening time was **`r round(mean(data$msPlayed)/1000, 2)` seconds**. The data start at `r min(data$Day)` and ends at `r max(data$Day)` </br> 
+This leads to an average of **`r round( nrow(data)/ length(unique(data$ConvTime)),1)` songs** per day as well as **`r round( sum(data$msPlayed)/1000/60 / length(unique(data$ConvTime)),1)` minutes** listened to music each day. In general, there were **`r round( length(unique(data$trackName))/ length(unique(data$artistName)),1)` songs per artist**. Since this analysis does not capture individual artists or days, this analysis will go into more detail to capture this variance.
 
 ```{r}
 summary(data)
 ```
 
+### Playing time of songs
 
-### Artist over time
-Next, we look at how long certain artists were played by day.
 ```{r}
-data %>% 
-  group_by(artistName, ConvTime) %>% 
-  count() %>% 
-  summarise(Total = cumsum(n)) %>% 
-  ggplot(aes(x=ConvTime, y=Total, color=artistName))+
-  geom_line()+
-  scale_x_date()+
-  guides(color="none")
-
+ggplot(data, aes(msPlayed/(1000*60)))+
+  geom_density(alpha=.5, fill="white")+
+  scale_x_continuous(trans = "log1p", breaks = c(0,0.5, 1, 2,3,5,10))+
+  labs(x="Play time [seconds]")+
+  dark_theme_classic()
 ```
 
+As we can see, we have to distinct peaks for the time listened to songs, one below 0.5 minutes and the second between 2 and 5 minutes, indicating the latter being songs skipped and the others songs completely listened.
+
+First, I will look at how many songs were played by day. Since spotify will also report on songs only played for few seconds before skipping, we will look into each of it. We will start by looking at all songs.
+
+```{r}
+data %>% 
+  group_by(Day) %>% 
+  count() %>% 
+  ggplot(aes(x=Day, y=n, fill=n))+
+  geom_col()+
+  scale_fill_viridis_c(option="plasma")+
+  labs(x="Date", y="Number of songs", fill="Number of songs", 
+       title="Total listened Songs per day")+
+  dark_theme_classic()
+```
+
+As we see at some days high number of songs listened to. This might either indicate days with free time or travelling at which a lot of music was listened to. It might also represents days at which alot of songs were skipped due to **"Uneinigkeit"**. So we select only songs, which were played for at least **20 seconds**.
+
+```{r}
+data %>% 
+  filter(msPlayed>= 20000) %>% 
+  group_by(Day) %>% 
+  count() %>% 
+  ggplot(aes(x=Day, y=n, fill=n))+
+  geom_col()+
+  scale_fill_viridis_c(option="plasma")+
+  labs(x="Date", y="Number of songs", fill="Number of songs", 
+       title="Total listened Songs (longer than 20s) per day")+
+  dark_theme_classic()
+```
+
+And for comparison, we will also look into songs only played for maximum of **20 seconds** to find days, at which a lot of songs were skipped.
+
+```{r}
+data %>% 
+  filter(msPlayed < 20000) %>% 
+  group_by(Day) %>% 
+  count() %>% 
+  ggplot(aes(x=Day, y=n, fill=n))+
+  geom_col()+
+  scale_fill_viridis_c(option="plasma")+
+  labs(x="Date", y="Number of songs", fill="Number of songs", 
+       title="Total listened Songs (longer than 20s) per day")+
+  dark_theme_classic()
+```
+
+Next we use a broader range and look and look for each week.
+
+```{r}
+data %>% 
+  mutate(Weeks = floor_date(ConvTime, unit="week")) %>%
+  group_by(Weeks) %>% 
+  count() %>% 
+  ggplot(aes(x=Weeks, y=n, fill=n))+
+  geom_col()+
+  scale_fill_viridis_c(option="plasma")+
+  labs(x="Date", y="Number of songs", fill="Number of songs",
+       title="Total listened Songs per week")+
+  dark_theme_classic()
+```
+
+
+Next we divide the data into skipped (less than 20 seconds) and completly listened songs by week.
+
+```{r}
+data %>% 
+  mutate(Weeks = floor_date(ConvTime, unit="week"),
+         listen = ifelse(msPlayed>= 20000, "Listened", "skipped")) %>%
+  mutate(listen = factor(listen, levels=c("skipped", "Listened"))) %>% 
+  group_by(Weeks) %>% 
+  count(listen) %>% 
+  ggplot(aes(x=Weeks, y=n, fill=listen))+
+  geom_col(position="stack")+
+  #scale_fill_viridis_c(option="plasma")+
+  scale_fill_brewer(type = "qual", palette = "Dark2")+
+  labs(x="Date", y="Number of songs", fill="Skipped or listened",
+       title="Total listened Songs per week")+
+  dark_theme_classic()
+###with percentages
+data %>% 
+  mutate(Weeks = floor_date(ConvTime, unit="week"),
+         listen = ifelse(msPlayed>= 20000, "Listened", "skipped")) %>%
+  mutate(listen = factor(listen, levels=c("skipped", "Listened"))) %>% 
+  group_by(Weeks) %>% 
+  count(listen) %>% 
+  ggplot(aes(x=Weeks, y=n, fill=listen))+
+  geom_col(position="fill")+
+  #scale_fill_viridis_c(option="plasma")+
+  scale_fill_brewer(type = "qual", palette = "Dark2")+
+  labs(x="Date", y="Number of songs", fill="Skipped or listened",
+       title="Total listened Songs per week")+
+  dark_theme_classic()
+```
+
+
+
+And next for each month.
+```{r}
+data %>% 
+  mutate(Weeks = floor_date(ConvTime, unit="month")) %>%
+  group_by(Weeks) %>% 
+  count() %>% 
+  ggplot(aes(x=Weeks, y=n, fill=n))+
+  geom_col()+
+  scale_fill_viridis_c(option="plasma")+
+  labs(x="Date", y="Number of songs", fill="Number of songs",
+       title="Total listened Songs per week")+
+  dark_theme_classic()
+```
+
+
+```{r}
+data %>%
+  count(trackName) %>%
+  arrange(desc(n)) %>%
+  slice_head(n=20) %>%
+  ggplot(aes(y=trackName, x=n))+
+  geom_col()+
+  labs(x="Date", y="Listened Artist")#
+#   guides(color="none")
+```
+
+```{r}
+data %>% 
+  group_by(ConvTime) %>% 
+  count(artistName) %>% 
+  ggplot(aes(ConvTime, n, color=artistName))+
+  geom_point()+
+  labs(x="Date", y="Listened Artist")+
+  guides(color="none")
+```
+
+```{r}
+
+data %>% 
+  group_by(artistName, ConvTime) %>% 
+  count(trackName) %>% 
+  ggplot(aes(ConvTime, n, color=artistName))+
+  geom_point()+
+  guides(color="none")
+```
+
+### Artist over time
+
+Next, we look at how long certain artists were played by day.
+
+```{r}
+# data %>% 
+#   group_by(artistName, ConvTime) %>% 
+#   count() %>% 
+#   summarise(Total = cumsum(n)) %>% 
+#   ggplot(aes(x=ConvTime, y=Total, color=artistName))+
+#   geom_line()+
+#   scale_x_date()+
+#   guides(color="none")
+
+```
