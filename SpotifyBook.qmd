@@ -23,6 +23,9 @@ library(dplyr)
 library("ggdark")
 library(lubridate)
 library(RColorBrewer)
+library(scales)
+library(ggrepel)
+library(ggbump)
 ```
 
 Next, we load the dataset in the `data`-object.
@@ -141,7 +144,7 @@ data %>%
   geom_col(position="fill")+
   #scale_fill_viridis_c(option="plasma")+
   scale_fill_brewer(type = "qual", palette = "Dark2")+
-  labs(x="Date", y="Number of songs", fill="Skipped or listened",
+  labs(x="Date", y="Fraction", fill="Skipped or listened",
        title="Total listened Songs per week")+
   dark_theme_classic()
 ```
@@ -158,8 +161,9 @@ data %>%
   scale_fill_viridis_c(option="plasma")+
   labs(x="Date", y="Number of songs", fill="Number of songs",
        title="Total listened Songs per month")+
-  geom_label(aes(label=month(Weeks, label=TRUE)), nudge_y = -50, color="black", rotation=90)+
-  dark_theme_classic()
+  geom_label(aes(y = 0, label=month(Weeks, label=TRUE)), color="black", label.padding = unit(0.1, "lines"), nudge_y = -60)+
+  dark_theme_classic()+
+  theme(axis.ticks.x = element_blank())
 ```
 
 Further we count the
@@ -170,7 +174,6 @@ head(data)
 
 
 ```{r}
-library(scales)
 data %>% 
   mutate(year = floor_date(ConvTime, unit="year")) %>%
   mutate(Skipped = ifelse(msPlayed>=20000, "Listened", "Skipped")) %>%
@@ -232,32 +235,16 @@ data %>%
   slice_head(n = 25) %>% 
   ggplot(aes(y=reorder(artistName, n), x=n))+
   geom_col()+
-  dark_theme_classic()
-
+  geom_text(aes(y=reorder(artistName, n), x=0, label = reorder(artistName, n)),
+            hjust = "left", size=3, nudge_x = 5)+
+  labs(y="Artist", x="Times listened")+
+  dark_theme_classic()+
+  theme(axis.text.y = element_blank(), axis.ticks.y = element_blank() )
 
 ```
 
 
 
-```{r}
-data %>% 
-  group_by(ConvTime) %>% 
-  count(artistName) %>% 
-  ggplot(aes(ConvTime, n, color=artistName))+
-  geom_point()+
-  labs(x="Date", y="Listened Artist")+
-  guides(color="none")
-```
-
-```{r}
-
-data %>% 
-  group_by(artistName, ConvTime) %>% 
-  count(trackName) %>% 
-  ggplot(aes(ConvTime, n, color=artistName))+
-  geom_point()+
-  guides(color="none")
-```
 
 ### Artist over time
 
@@ -271,11 +258,193 @@ data %>%
   ungroup() %>% 
   group_by(artistName) %>% 
   mutate(Total = cumsum(SumDay)) %>% 
-  ggplot(aes(x=ConvTime, y=Total, color=artistName))+
+  mutate(label = if_else(Total == max(Total), as.character(artistName), NA_character_)) %>% 
+  ggplot(aes(x=ConvTime, y=Total, color=artistName, group=artistName))+
   geom_line()+
   #scale_y_continuous(trans="log1p", breaks = c(0, 1, 10, 50, 100, 1000, 1500))+
-  geom_vline(xintercept = as.POSIXct(as.Date("2022-06-11")), linetype=2, color="white")+
+  geom_vline(xintercept = as.POSIXct(as.Date("2022-06-11")), linetype=2, color="red")+
   dark_theme_classic()+
+    geom_text_repel(aes(x= ConvTime, label = label),
+                  nudge_y = 30,
+                  point.size=NA,
+                  na.rm = TRUE,
+                  max.overlaps = 20)+
   guides(color="none")
 
 ```
+
+Next we look at the total listened times only.
+```{r}
+data %>%
+  #filter(artistName == "Rammstein" | artistName == "Sabaton" ) %>% 
+  group_by(artistName, ConvTime) %>%
+  count(name="SumDay") %>%
+  ungroup() %>% 
+  group_by(artistName) %>% 
+  mutate(Total = cumsum(SumDay)) %>% 
+  filter(ConvTime == max(ConvTime)) %>% 
+  ggplot()
+```
+## Analysis of 2022
+
+Since the data only went until october 2022, this part is missing data of the end of the year. Nevertheless, this analysis focusses on one year and can be repeated and extended as soon as the data are complete.
+
+```{r subset2022}
+data2022 <- data %>% 
+  filter(year(ConvTime)== 2022)
+head(data2022)
+```
+Top listened artist in 2022.
+
+```{r}
+data2022 %>% 
+  group_by(artistName) %>% 
+  count() %>% 
+  ungroup() %>% 
+  arrange(-n) %>% 
+  slice_head(n=25) %>% 
+  ggplot(aes(x=n, y=reorder(artistName, n)))+
+  geom_col()+
+  geom_text(aes(label=artistName, x=10),
+            hjust="left", size=3)+
+  dark_theme_classic()+
+  labs(y="Artist", x="Times listened")+
+  theme(axis.ticks.y = element_blank(), axis.text.y = element_blank())
+```
+
+```{r}
+datsong <- data2022 %>% 
+  group_by(artistName, trackName) %>% 
+  count() %>% 
+  ungroup() %>% 
+  arrange(-n) %>% 
+  slice_head(n=20)
+
+cols <- brewer.pal(8, "Set1")
+colslong <- colorRampPalette(cols)(length(unique(datsong$artistName)))
+names(colslong) <- unique(datsong$artistName)
+
+
+ggplot(datsong, aes(x=n, y=reorder(trackName, n), fill=artistName))+
+  geom_col()+
+  geom_text(aes(label=trackName, x=1),
+            hjust="left", size=3)+
+  dark_theme_classic()+
+  scale_fill_manual(values = colslong)+
+  labs(y="Title", x="Times listened", fill="Artist")+
+  theme(axis.ticks.y = element_blank(), axis.text.y = element_blank())
+
+```
+
+Next we look at the highest ranked artist using **ggbump**.
+
+```{r}
+TopX <- 5 ####number of ranked Artists
+ rankM <- data2022 %>% 
+  mutate(Month = month(ConvTime),
+         Monthlabel = month(ConvTime, label=TRUE)) %>% 
+  group_by(Month, artistName) %>% 
+  count(artistName) %>% 
+  ungroup() %>% 
+  group_by(Month) %>%   
+  slice_max(order_by = n, n = TopX) %>% 
+  mutate(Rank = rank(-n, ties.method="first")) %>% 
+   ungroup()
+
+
+
+cols <- brewer.pal(8, "Dark2")
+  colslong <- colorRampPalette(cols)(length(unique(rankM$artistName)))
+names(colslong) <- unique(rankM$artistName)
+
+
+counts <- table(rankM$artistName)
+count1 <- (counts[counts < 2 ])
+
+colsgrey <- brewer.pal(8, "Greys")
+colsc1 <- colorRampPalette(colsgrey)(length(count1))
+names(colsc1) <- names(count1)
+
+
+countg1 <- (counts[counts > 1 ])
+colsdark2 <- brewer.pal(8, "Dark2")
+colsg1 <- colorRampPalette(colsdark2)(length(countg1))
+names(colsg1) <- names(countg1)
+
+totalcol <- c(colsc1, colsg1)
+
+totalcol["Rammstein"] <- "darkred"
+
+ggplot(rankM, aes(x = Month, y = Rank, color = artistName)) +
+  geom_bump(size = 1.5, smooth=5) +
+  geom_point(size = 8)+
+  scale_y_reverse(breaks =seq(TopX+2))+
+  scale_x_continuous(breaks = seq_along(month.abb), label=month.abb)+
+  geom_text(aes(label=n), color="grey80", size=4)+
+  scale_color_manual(values=totalcol)+
+  dark_theme_classic()+
+  theme(axis.line =  element_blank(), axis.ticks =  element_blank(),
+        axis.text.y = element_text(size=12, color="white"))
+
+```
+next we look at the top Rammstein songs per month.
+```{r}
+
+
+TopX <- 5 ####number of ranked Artists
+ rankM <- data2022 %>% 
+   filter(artistName == "Rammstein") %>% 
+  mutate(Month = month(ConvTime),
+         Monthlabel = month(ConvTime, label=TRUE)) %>% 
+  group_by(Month, trackName) %>% 
+  count(trackName) %>% 
+  ungroup() %>% 
+  group_by(Month) %>%   
+  slice_max(order_by = n, n = TopX) %>% 
+  mutate(Rank = rank(-n, ties.method="first")) %>% 
+   ungroup()
+
+
+
+cols <- brewer.pal(8, "Dark2")
+  colslong <- colorRampPalette(cols)(length(unique(rankM$trackName)))
+names(colslong) <- unique(rankM$artistName)
+
+
+counts <- table(rankM$trackName)
+count1 <- (counts[counts < 2 ])
+
+colsgrey <- brewer.pal(8, "Greys")
+colsc1 <- colorRampPalette(colsgrey)(length(count1))
+names(colsc1) <- names(count1)
+
+
+countg1 <- (counts[counts > 1 ])
+colsdark2 <- brewer.pal(8, "Dark2")
+colsg1 <- colorRampPalette(colsdark2)(length(countg1))
+names(colsg1) <- names(countg1)
+
+totalcol <- c(colsc1, colsg1)
+
+#totalcol["Rammstein"] <- "darkred"
+
+ggplot(rankM, aes(x = Month, y = Rank, color = trackName)) +
+  geom_bump(size = 1.5, smooth=5) +
+  geom_point(size = 8)+
+  scale_y_reverse(breaks =seq(TopX+2))+
+  scale_x_continuous(breaks = seq_along(month.abb), label=month.abb)+
+  geom_text(aes(label=n), color="grey80", size=4)+
+  scale_color_manual(values=totalcol)+
+  dark_theme_classic()+
+  theme(axis.line =  element_blank(), axis.ticks =  element_blank(),
+        axis.text.y = element_text(size=12, color="white"),
+        axis.text.x = element_text(size=12, color="white"))
+       #legend.position = "none")
+  
+
+
+
+```
+
+
+
